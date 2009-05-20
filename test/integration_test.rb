@@ -474,6 +474,9 @@ class IntegrationTest < Test::Unit::TestCase
         headers = s3_headers_for(@dummy.avatar, :original)
         p headers
         assert_equal 'image/png', headers['content-type']
+        headers = s3_headers_for(@dummy.avatar, :thumb)
+        p headers
+        assert_equal 'image/gif', headers['content-type']
       end
     end
   end

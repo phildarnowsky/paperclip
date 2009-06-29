@@ -195,7 +195,7 @@ module Paperclip
             log("saving #{path(style)}")
             key = s3_bucket.key(path(style))
             key.data = file
-            key.put(nil, @s3_permissions, {'Content-type' => instance_read(:content_type)}.merge(@s3_headers))
+            key.put(nil, @s3_permissions, {'Content-type' => content_type(style)}.merge(@s3_headers))
           rescue RightAws::AwsError => e
             raise
           end

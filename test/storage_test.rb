@@ -238,6 +238,95 @@ class StorageTest < Test::Unit::TestCase
     end
   end
 
+  context "An attachment with S3 storage and a thumbnail style" do
+    setup do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :path => ":attachment/:style/:basename.:extension",
+                    :s3_credentials => {
+                      'access_key_id' => "12345",
+                      'secret_access_key' => "54321"
+                    },
+                    :styles => { :thumb => "100x100" }
+    end
+
+    context "when assigned" do
+      setup do
+        @file = File.new(File.join(File.dirname(__FILE__), 'fixtures', '5k.png'), 'rb')
+        @dummy = Dummy.new
+        @dummy.avatar = @file
+      end
+
+      teardown { @file.close }
+
+      context "and saved" do
+        setup do
+          @s3_mock     = stub
+          @bucket_mock = stub
+          RightAws::S3.expects(:new).with("12345", "54321", {}).returns(@s3_mock)
+          @s3_mock.expects(:bucket).with("testing", true, "public-read").returns(@bucket_mock)
+          @key_mock = stub
+          @bucket_mock.expects(:key).twice.returns(@key_mock)
+          @key_mock.expects(:data=).twice
+          @key_mock.expects(:put).with(nil,
+                                        'public-read',
+                                        'Content-type' => 'image/png').twice
+          @dummy.save
+        end
+
+        should "succeed" do
+          assert true
+        end
+      end
+    end
+  end
+
+  context "An attachment with S3 storage and a thumbnail style with a different format from the original" do
+    setup do
+      rebuild_model :storage => :s3,
+                    :bucket => "testing",
+                    :path => ":attachment/:style/:basename.:extension",
+                    :s3_credentials => {
+                      'access_key_id' => "12345",
+                      'secret_access_key' => "54321"
+                    },
+                    :styles => { :thumb => ["100x100", :gif] }
+    end
+
+    context "when assigned" do
+      setup do
+        @file = File.new(File.join(File.dirname(__FILE__), 'fixtures', '5k.png'), 'rb')
+        @dummy = Dummy.new
+        @dummy.avatar = @file
+      end
+
+      teardown { @file.close }
+
+      context "and saved" do
+        setup do
+          @s3_mock     = stub
+          @bucket_mock = stub
+          RightAws::S3.expects(:new).with("12345", "54321", {}).returns(@s3_mock)
+          @s3_mock.expects(:bucket).with("testing", true, "public-read").returns(@bucket_mock)
+          @key_mock = stub
+          @bucket_mock.expects(:key).twice.returns(@key_mock)
+          @key_mock.expects(:data=).twice
+          @key_mock.expects(:put).with(nil,
+                                        'public-read',
+                                        'Content-type' => 'image/png')
+          @key_mock.expects(:put).with(nil,
+                                        'public-read',
+                                        'Content-type' => 'image/gif')
+          @dummy.save
+        end
+
+        should "succeed" do
+          assert true
+        end
+      end
+    end
+  end
+
   unless ENV["S3_TEST_BUCKET"].blank?
     context "Using S3 for real, an attachment with S3 storage" do
       setup do

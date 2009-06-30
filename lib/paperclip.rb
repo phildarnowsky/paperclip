@@ -212,6 +212,15 @@ module Paperclip
     #   choices are :filesystem and :s3. The default is :filesystem. Make sure you read the
     #   documentation for Paperclip::Storage::Filesystem and Paperclip::Storage::S3
     #   for backend-specific options.
+    # * +content_type_strategy+: Controls how the content type of an attachment is determined.
+    #   When set to :believe_client (the default), the content type field will be set to
+    #   whatever the client has claimed the uploaded file's content type is.  When set to
+    #   :from_extension, Paperclip will try to deduce the content type from the uploaded
+    #   file's extension, making use of the fairly extensive map of content types from
+    #   Rack::Mime.  When set to :from_extension_when_generic, Paperclip will also try to
+    #   deduce the content type from the extension, but only if the content type sent in
+    #   the request is "generic" (i.e. application/octet-stream or the like).
+
     def has_attached_file name, options = {}
       include InstanceMethods
 

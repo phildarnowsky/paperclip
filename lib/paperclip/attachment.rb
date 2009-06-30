@@ -6,18 +6,19 @@ module Paperclip
     
     def self.default_options
       @default_options ||= {
-        :url           => "/system/:attachment/:id/:style/:filename",
-        :path          => ":rails_root/public:url",
-        :styles        => {},
-        :default_url   => "/:attachment/:style/missing.png",
-        :default_style => :original,
-        :validations   => [],
-        :storage       => :filesystem,
-        :whiny         => Paperclip.options[:whiny] || Paperclip.options[:whiny_thumbnails]
+        :url                   => "/system/:attachment/:id/:style/:filename",
+        :path                  => ":rails_root/public:url",
+        :styles                => {},
+        :default_url           => "/:attachment/:style/missing.png",
+        :default_style         => :original,
+        :validations           => [],
+        :storage               => :filesystem,
+        :whiny                 => Paperclip.options[:whiny] || Paperclip.options[:whiny_thumbnails],
+        :content_type_strategy => :believe_client
       }
     end
 
-    attr_reader :name, :instance, :styles, :default_style, :convert_options, :queued_for_write, :options
+    attr_reader :name, :instance, :styles, :default_style, :convert_options, :queued_for_write, :options, :content_type_strategy
 
     # Creates an Attachment object. +name+ is the name of the attachment,
     # +instance+ is the ActiveRecord object instance it's attached to, and
@@ -28,25 +29,26 @@ module Paperclip
 
       options = self.class.default_options.merge(options)
 
-      @url               = options[:url]
-      @url               = @url.call(self) if @url.is_a?(Proc)
-      @path              = options[:path]
-      @path              = @path.call(self) if @path.is_a?(Proc)
-      @styles            = options[:styles]
-      @styles            = @styles.call(self) if @styles.is_a?(Proc)
-      @default_url       = options[:default_url]
-      @validations       = options[:validations]
-      @default_style     = options[:default_style]
-      @storage           = options[:storage]
-      @whiny             = options[:whiny_thumbnails] || options[:whiny]
-      @convert_options   = options[:convert_options] || {}
-      @processors        = options[:processors] || [:thumbnail]
-      @options           = options
-      @queued_for_delete = []
-      @queued_for_write  = {}
-      @errors            = {}
-      @validation_errors = nil
-      @dirty             = false
+      @url                   = options[:url]
+      @url                   = @url.call(self) if @url.is_a?(Proc)
+      @path                  = options[:path]
+      @path                  = @path.call(self) if @path.is_a?(Proc)
+      @styles                = options[:styles]
+      @styles                = @styles.call(self) if @styles.is_a?(Proc)
+      @default_url           = options[:default_url]
+      @validations           = options[:validations]
+      @default_style         = options[:default_style]
+      @content_type_strategy = options[:content_type_strategy]
+      @storage               = options[:storage]
+      @whiny                 = options[:whiny_thumbnails] || options[:whiny]
+      @convert_options       = options[:convert_options] || {}
+      @processors            = options[:processors] || [:thumbnail]
+      @options               = options
+      @queued_for_delete     = []
+      @queued_for_write      = {}
+      @errors                = {}
+      @validation_errors     = nil
+      @dirty                 = false
 
       normalize_style_definition
       initialize_storage
@@ -77,7 +79,7 @@ module Paperclip
 
       @queued_for_write[:original]   = uploaded_file.to_tempfile
       instance_write(:file_name,       uploaded_file.original_filename.strip.gsub(/[^\w\d\.\-]+/, '_'))
-      instance_write(:content_type,    uploaded_file.content_type.to_s.strip)
+      instance_write(:content_type,    determine_content_type(uploaded_file))
       instance_write(:file_size,       uploaded_file.size.to_i)
       instance_write(:updated_at,      Time.now)
 
@@ -250,6 +252,14 @@ module Paperclip
 
     private
 
+    # "application/octet" isn't a real MIME type, but I've seen it around
+    # anyway.
+
+    GENERIC_CONTENT_TYPES = %w(
+      application/octet
+      application/octet-stream
+    )
+
     def ensure_required_accessors! #:nodoc:
       %w(file_name).each do |field|
         unless @instance.respond_to?("#{name}_#{field}") && @instance.respond_to?("#{name}_#{field}=")
@@ -408,6 +418,44 @@ module Paperclip
       end
     end
 
+    def determine_content_type(uploaded_file)
+      nominal_content_type = normalize_content_type(uploaded_file.content_type)
+            
+      case content_type_strategy
+      when :believe_client 
+        nominal_content_type
+      when :from_extension 
+        determine_content_type_from_extension(uploaded_file)
+      when :from_extension_when_generic
+        determine_content_type_from_extension_when_generic(uploaded_file)
+      else
+        raise NotImplementedError, "Don't know how to dispatch content type strategy #{content_type_strategy}"
+      end
+    end
+
+    def determine_content_type_from_extension(uploaded_file)
+      extension = File.extname(uploaded_file.original_filename.strip)
+      extension = extension[1..-1] # lose leading dot
+      extension ||= ''
+
+      Paperclip.content_type_for extension
+    end
+
+    def determine_content_type_from_extension_when_generic(uploaded_file)
+      if generic_content_type?(uploaded_file.content_type)
+        determine_content_type_from_extension(uploaded_file)
+      else
+        normalize_content_type(uploaded_file.content_type)
+      end
+    end
+
+    def normalize_content_type(content_type)
+      content_type.to_s.strip
+    end
+
+    def generic_content_type?(content_type)
+      GENERIC_CONTENT_TYPES.include?(content_type)
+    end
   end
 end
 

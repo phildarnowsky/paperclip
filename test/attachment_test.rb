@@ -1,3 +1,4 @@
+require 'ruby-debug'
 require 'test/helper'
 
 class Dummy
@@ -444,6 +445,96 @@ class AttachmentTest < Test::Unit::TestCase
 
     should "strip whitespace from content_type field" do
       assert_equal "image/png", @dummy.avatar.instance.avatar_content_type
+    end
+  end
+
+  context "Assigning an attachment with the generic content-type" do
+    teardown do
+      rebuild_model :content_type_strategy => :believe_client
+    end
+
+    %w(application/octet application/octet-stream).each do |generic_content_type|
+      context generic_content_type do
+        setup do
+          @file = StringIO.new('.')
+          @file.stubs(:content_type).returns(generic_content_type)
+        end
+
+        context "when the content type strategy is :believe_client" do
+          setup do
+            rebuild_model :content_type_strategy => :believe_client
+            @dummy = Dummy.new
+            @dummy.avatar = @file
+          end
+
+          should "return that generic content type" do
+            assert_equal generic_content_type, @dummy.avatar_content_type
+          end
+        end
+
+        [:from_extension, :from_extension_when_generic].each do |inferring_strategy|
+          context "when the content type strategy is #{inferring_strategy}" do
+            setup do
+              rebuild_model :content_type_strategy => inferring_strategy
+              @file.stubs(:original_filename).returns("foobar.png  \n")
+              @dummy = Dummy.new
+              @dummy.avatar = @file
+            end
+
+            should "infer from the extension" do
+              assert_equal "image/png", @dummy.avatar_content_type
+            end
+          end
+        end
+
+      end
+    end
+  end
+
+  context "An attachment with a non-generic content-type" do
+    setup do
+      @file = StringIO.new('.')
+      @file.stubs(:content_type).returns("image/xcf")
+    end
+
+    [:believe_client, :from_extension_when_generic].each do |believing_content_type|
+      context "and a content type strategy of #{believing_content_type}" do
+        setup do
+          rebuild_model :content_type_strategy => believing_content_type
+          @dummy = Dummy.new
+          @dummy.avatar = @file
+        end
+
+        should "use the specified content-type" do
+          assert_equal "image/xcf", @dummy.avatar.content_type
+        end
+      end
+    end
+
+    context "when the content type strategy is :from_extension and the extension disagrees with the nominal content-type" do
+      setup do
+        @file.stubs(:original_filename).returns("can_of_haggis.png")
+
+        rebuild_model :content_type_strategy => :from_extension
+        @dummy = Dummy.new
+        @dummy.avatar = @file
+      end
+
+      should "let the extension overrule the nominal content-type" do
+        assert_equal "image/png", @dummy.avatar.content_type
+      end
+    end
+  end
+
+  context "Assigning an attachment when the content type strategy has an invalid value" do
+    setup do
+      rebuild_model :content_type_strategy => :zomg_wtf
+      @dummy = Dummy.new
+      @file = StringIO.new('.')
+    end
+
+    should "raise a NotImplemented error" do
+      assert_raise(NotImplementedError) {@dummy.avatar = @file}
     end
   end
 
